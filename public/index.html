@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KINOX — Kino olamiga xush kelibsiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div id="authScreen" class="auth-screen">
+  <div class="auth-glow"></div>
+  <div class="auth-brand"><span class="brand-mark">K</span><span>KINOX</span></div>
+  <div class="auth-card">
+    <div class="eyebrow">YOUR MOVIE UNIVERSE</div>
+    <h1>Kino olami<br><span>shu yerdan boshlanadi.</span></h1>
+    <p class="muted">Sevimli filmlaringizni toping va tomosha qiling.</p>
+    <div class="tabs"><button class="tab active" data-tab="login">Kirish</button><button class="tab" data-tab="register">Ro‘yxatdan o‘tish</button></div>
+    <form id="authForm">
+      <label>Login<input id="username" autocomplete="username" placeholder="Login kiriting" required minlength="3"></label>
+      <label>Parol<input id="password" type="password" autocomplete="current-password" placeholder="Parolingiz" required minlength="8"></label>
+      <button class="primary full" id="authSubmit">Tizimga kirish <span>↗</span></button>
+    </form>
+    <div class="auth-foot">KINOX <span>•</span> Discover something great</div>
+  </div>
+</div>
+<div id="app" class="hidden">
+  <aside class="sidebar">
+    <a class="logo" href="#"><span class="brand-mark">K</span>KINOX</a>
+    <div class="side-label">MENU</div>
+    <button class="side-link active" data-page="home"><span>⌂</span> Bosh sahifa</button>
+    <button class="side-link" data-page="catalog"><span>▤</span> Barcha kinolar</button>
+    <button class="side-link" data-page="image"><span>▧</span> Rasm orqali qidirish</button>
+    <button class="side-link hidden" data-page="admin"><span>★</span> Admin panel</button>
+    <div class="sidebar-bottom"><div class="side-label">ACCOUNT</div><div class="user-mini"><div class="avatar" id="avatar">U</div><div><b id="sideUser">User</b><small id="sideRole">Foydalanuvchi</small></div></div><button id="logout" class="side-link"><span>↪</span> Chiqish</button></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="crumb">KINOX <span>/</span> <b id="pageTitle">Bosh sahifa</b></div><div class="top-actions"><div class="searchbox"><span>⌕</span><input id="search" placeholder="Kino nomini qidiring..."><kbd>ENTER</kbd></div><div class="avatar small" id="topAvatar">U</div></div></header>
+    <section id="homePage">
+      <div class="hero"><div class="hero-content"><div class="pill"><i></i> KINOX ORIGINAL DISCOVERY</div><h1>Har bir hikoya<br> <span>yangi olam.</span></h1><p>Kayfiyatingizga mos filmni toping. Katta kino katalogi endi bir joyda.</p><button class="primary" onclick="showPage('catalog')">Kinolarni ko‘rish <span>↗</span></button></div><div class="hero-orb"></div><div class="hero-index">LIVE <span>● jonli</span></div></div>
+      <div class="section-head"><div><div class="eyebrow">HANDPICKED FOR YOU</div><h2>Tanlangan kinolar</h2></div><button class="text-button" onclick="showPage('catalog')">Barchasini ko‘rish ↗</button></div>
+      <div id="featuredGrid" class="movie-grid"></div>
+      <div class="section-head"><div><div class="eyebrow">EXPLORE THE LIBRARY</div><h2>Janrlar bo‘yicha</h2></div></div>
+      <div class="genre-list" id="genreList"></div>
+    </section>
+    <section id="catalogPage" class="hidden"><div class="page-intro"><div class="eyebrow">THE COLLECTION</div><h1>Barcha kinolar</h1><p class="muted">Katalogdagi filmlarni qidiring va janr bo‘yicha saralang.</p></div><div class="filters"><select id="genreFilter"><option>Barchasi</option><option>Action</option><option>Drama</option><option>Comedy</option><option>Crime</option><option>Sci-Fi</option><option>Fantasy</option><option>Animation</option><option>Thriller</option><option>Romance</option><option>Horror</option><option>Adventure</option><option>War</option><option>Mystery</option><option>History</option><option>Western</option></select><span id="resultCount" class="muted"></span></div><div id="catalogGrid" class="movie-grid"></div></section>
+    <section id="imagePage" class="hidden"><div class="page-intro"><div class="eyebrow">VISUAL SEARCH</div><h1>Rasm orqali <span class="purple">qidiring.</span></h1><p class="muted">Kino skrinshotini yuklang. OCR rasm ichidagi ko‘rinadigan yozuvlarni aniqlab, nom bo‘yicha qidiradi.</p></div><div class="upload-card"><div class="upload-icon">▧</div><h3>Skrinshotni shu yerga yuklang</h3><p class="muted">JPG, PNG yoki WEBP · 5 MB gacha</p><input type="file" id="screenshot" accept="image/png,image/jpeg,image/webp" hidden><button class="secondary" id="chooseImage">Rasm tanlash</button><img id="preview" class="preview hidden"><div id="ocrStatus" class="muted"></div><div id="ocrResults" class="movie-grid"></div><small class="muted">Eslatma: bu versiyada rasm ichidagi matn OCR orqali aniqlanadi. Faqat sahna tasviridan kino nomini aniqlash hozircha qo‘llab-quvvatlanmaydi.</small></div></section>
+    <section id="adminPage" class="hidden"><div class="page-intro"><div class="eyebrow">CONTROL CENTER</div><h1>Admin <span class="purple">panel.</span></h1><p class="muted">KINOX platformasini boshqaring.</p></div><div class="stats"><div class="stat"><small>FOYDALANUVCHILAR</small><b id="statUsers">0</b><span>Ro‘yxatdan o‘tgan</span></div><div class="stat"><small>JAMI KINOLAR</small><b id="statMovies">0</b><span>Katalogda</span></div><div class="stat"><small>ONLAYN</small><b id="statOnline">0</b><span><i class="live-dot"></i> Hozir saytda</span></div><div class="stat"><small>BLOKLANGAN</small><b id="statBlocked">0</b><span>Hisoblar</span></div></div>
+      <div class="admin-columns"><div class="panel"><div class="panel-head"><h3>Yangi kino qo‘shish</h3><span class="panel-icon">＋</span></div><form id="movieForm" class="admin-form">
+<label>Kino nomi<input name="title" required placeholder="Masalan: Interstellar"></label>
+<label>Poster (rasm fayl yoki URL)<input name="poster" placeholder="https://... yoki quyida fayl tanlang"><input type="file" id="posterFile" accept="image/png,image/jpeg,image/webp"></label>
+<div class="row2"><label>Yil<input name="year" type="number" placeholder="2025"></label><label>Davomiyligi<input name="duration" placeholder="2s 49d"></label></div>
+<label>Janrlar<input name="genres" placeholder="Sci-Fi, Drama"></label>
+<div class="row2"><label>Rejissyor<input name="director"></label><label>Davlat<input name="country"></label></div>
+<label>Aktyorlar<input name="cast" placeholder="Ism Familiya, Ism Familiya"></label>
+<label>Qisqacha ma’lumot<textarea name="overview" rows="3" placeholder="Film haqida..."></textarea></label>
+<div class="video-block"><div class="video-head"><b>Videolar (tillar bo‘yicha)</b><button type="button" class="mini-btn" id="addVideoRow">+ Til qo‘shish</button></div><div id="videoRows"></div><small class="muted">Har til uchun video fayl yuklang yoki rasmiy/ruxsatli URL kiriting.</small></div>
+<button class="primary full" id="saveMovie">Kinoni saqlash ↗</button></form></div><div class="panel"><div class="panel-head"><h3>Foydalanuvchilar</h3><span class="panel-icon">♙</span></div><div id="usersList" class="users-list"></div></div></div>
+      <div class="panel movie-admin-panel"><div class="panel-head"><h3>Kino katalogi</h3><span class="muted" id="adminMovieCount"></span></div><div id="adminMovieList" class="admin-movie-list"></div></div>
+    </section>
+  </main>
+</div>
+<div id="player" class="player hidden"><div class="player-bar"><b id="playerTitle"></b><div id="playerLangs" class="lang-chips"></div><button class="player-close" id="playerClose">×</button></div><div id="playerStage" class="player-stage"></div></div>
+<div id="movieModal" class="modal hidden"><div class="modal-backdrop" data-close></div><div class="modal-box"><button class="modal-close" data-close>×</button><div id="modalContent"></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script><script src="/app.js"></script>
+</body></html>
