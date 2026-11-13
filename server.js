@@ -14,20 +14,51 @@ const Movie = require("./src/Movie");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const uploadDir = path.join(__dirname, "uploads");
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const BLOB_ENABLED = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+// Vercel'da fayl tizimi faqat o'qish uchun (faqat /tmp yoziladi va u vaqtinchalik).
+const uploadDir = IS_VERCEL ? path.join("/tmp", "uploads") : path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+// --- MongoDB ulanishi (serverless uchun bir marta ulanib, keyin qayta ishlatiladi) ---
+let readyPromise = null;
+function mongoConfigured() {
+  return Boolean(process.env.MONGODB_URI) && !process.env.MONGODB_URI.includes("YOUR_ATLAS");
+}
+async function init() {
+  if (!mongoConfigured()) throw new Error("MONGODB_URI sozlanmagan. Environment variables bo‘limini to‘ldiring.");
+  await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
+  const removed = await Movie.deleteMany({ source: { $ne: "admin" } });
+  if (removed.deletedCount) console.log(`${removed.deletedCount} ta eski katalog kino o‘chirildi.`);
+  const adminName = String(process.env.ADMIN_USERNAME || "admin").toLowerCase();
+  const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+  if (adminPassword.length < 8) throw new Error("ADMIN_PASSWORD kamida 8 belgidan iborat bo‘lsin.");
+  const admin = await User.findOne({ username: adminName });
+  if (!admin) await User.create({ username: adminName, passwordHash: await bcrypt.hash(adminPassword, 12), role: "admin" });
+  else if (admin.role !== "admin") { admin.role = "admin"; admin.passwordHash = await bcrypt.hash(adminPassword, 12); await admin.save(); }
+}
+function ready() {
+  if (!readyPromise) readyPromise = init().catch(err => { readyPromise = null; throw err; });
+  return readyPromise;
+}
+
+// Render va Vercel proxy orqasida ishlaydi: secure cookie va rate-limit to‘g‘ri ishlashi uchun kerak.
+app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static(uploadDir));
+app.use("/api", (req, res, next) => ready().then(() => next(), err => {
+  console.error(err);
+  res.status(500).json({ error: "Server sozlanmagan yoki bazaga ulanib bo‘lmadi: " + err.message });
+}));
 app.use(session({
   name: "kinox.sid",
   secret: process.env.SESSION_SECRET || "please-change-this-session-secret",
   resave: false,
   saveUninitialized: false,
-  store: process.env.MONGODB_URI ? MongoStore.create({ mongoUrl: process.env.MONGODB_URI }) : undefined,
+  store: mongoConfigured() ? MongoStore.create({ clientPromise: ready().then(() => mongoose.connection.getClient()) }) : undefined,
   cookie: { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
@@ -36,7 +67,8 @@ const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, uploadDir),
   filename: (_, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${path.extname(file.originalname).toLowerCase()}`)
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (_, file, cb) => {
+// Skrinshot faqat tekshiriladi (OCR brauzerda bajariladi), diskka saqlanmaydi.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 }, fileFilter: (_, file, cb) => {
   if (/^image\/(jpeg|png|webp)$/.test(file.mimetype)) cb(null, true);
   else cb(new Error("Faqat JPG, PNG yoki WEBP rasm yuklang."));
 }});
@@ -111,10 +143,12 @@ app.get("/api/movies/:id", requireAuth, async (req, res) => {
 });
 
 // Screenshot helper: OCR is performed in the browser. Recognized words are searched as a normal title query.
-app.post("/api/image-search", requireAuth, upload.single("screenshot"), (req, res) => {
+app.post("/api/image-search", requireAuth, (req, res, next) => upload.single("screenshot")(req, res, err => {
+  if (err) return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "Rasm 4 MB dan kichik bo‘lishi kerak." : err.message });
+  next();
+}), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Rasm tanlanmadi." });
-  const publicPath = `/uploads/${req.file.filename}`;
-  res.json({ image: publicPath, message: "Rasm yuklandi. Rasm ichidagi matnni aniqlab qidirish uchun OCR ishlatiladi." });
+  res.json({ message: "Rasm yuklandi. Rasm ichidagi matnni aniqlab qidirish uchun OCR ishlatiladi." });
 });
 
 app.get("/api/events", requireAuth, (req, res) => {
@@ -124,7 +158,9 @@ app.get("/api/events", requireAuth, (req, res) => {
   sseClients.set(res, req.session.userId);
   broadcast("online", { online: onlineCount() });
   const ping = setInterval(() => res.write(": ping\n\n"), 25000);
-  req.on("close", () => { clearInterval(ping); sseClients.delete(res); broadcast("online", { online: onlineCount() }); });
+  // Vercel funksiyalari cheklangan vaqt ishlaydi: ulanishni o‘zimiz yopamiz, brauzer avtomatik qayta ulanadi.
+  const limit = IS_VERCEL ? setTimeout(() => res.end(), 50000) : null;
+  req.on("close", () => { clearInterval(ping); clearTimeout(limit); sseClients.delete(res); broadcast("online", { online: onlineCount() }); });
 });
 
 app.get("/api/admin/stats", requireAdmin, async (_, res) => {
@@ -146,7 +182,28 @@ app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
   if (!user) return res.status(404).json({ error: "Foydalanuvchi topilmadi." });
   res.json({ ok: true });
 });
+app.get("/api/admin/upload-config", requireAdmin, (_, res) => {
+  res.json({ mode: BLOB_ENABLED ? "blob" : IS_VERCEL ? "none" : "local" });
+});
+// Vercel Blob: brauzer faylni to‘g‘ridan-to‘g‘ri Blob'ga yuklaydi (serverless 4.5 MB cheklovini chetlab o‘tadi).
+app.post("/api/admin/blob-upload", requireAdmin, async (req, res) => {
+  if (!BLOB_ENABLED) return res.status(400).json({ error: "BLOB_READ_WRITE_TOKEN sozlanmagan." });
+  try {
+    const { handleUpload } = require("@vercel/blob/client");
+    const result = await handleUpload({
+      body: req.body,
+      request: req,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/x-matroska", "video/quicktime"],
+        maximumSizeInBytes: 4 * 1024 * 1024 * 1024,
+        addRandomSuffix: true
+      })
+    });
+    res.json(result);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.post("/api/admin/upload", requireAdmin, (req, res) => {
+  if (IS_VERCEL) return res.status(400).json({ error: "Vercel'da fayl yuklash uchun Vercel Blob (BLOB_READ_WRITE_TOKEN) ulang yoki URL kiriting." });
   mediaUpload.single("file")(req, res, err => {
     if (err) return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "Fayl juda katta (4 GB gacha)." : err.message });
     if (!req.file) return res.status(400).json({ error: "Fayl tanlanmadi." });
@@ -198,20 +255,10 @@ app.get("/api/tmdb/search", requireAuth, async (req, res) => {
 
 app.get("*", (_, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-async function start() {
-  if (!process.env.MONGODB_URI || process.env.MONGODB_URI.includes("YOUR_ATLAS")) {
-    console.error("MONGODB_URI sozlanmagan. .env faylini to‘ldiring.");
-    process.exit(1);
-  }
-  await mongoose.connect(process.env.MONGODB_URI);
-  const removed = await Movie.deleteMany({ source: { $ne: "admin" } });
-  if (removed.deletedCount) console.log(`${removed.deletedCount} ta eski katalog kino o‘chirildi.`);
-  const adminName = String(process.env.ADMIN_USERNAME || "admin").toLowerCase();
-  const adminPassword = String(process.env.ADMIN_PASSWORD || "");
-  if (adminPassword.length < 8) throw new Error("ADMIN_PASSWORD kamida 8 belgidan iborat bo‘lsin.");
-  let admin = await User.findOne({ username: adminName });
-  if (!admin) await User.create({ username: adminName, passwordHash: await bcrypt.hash(adminPassword, 12), role: "admin" });
-  else if (admin.role !== "admin") { admin.role = "admin"; admin.passwordHash = await bcrypt.hash(adminPassword, 12); await admin.save(); }
-  app.listen(PORT, () => console.log(`KINOX ishlayapti: http://localhost:${PORT}`));
+if (require.main === module) {
+  ready()
+    .then(() => app.listen(PORT, () => console.log(`KINOX ishlayapti: http://localhost:${PORT}`)))
+    .catch(err => { console.error(err); process.exit(1); });
 }
-start().catch(err => { console.error(err); process.exit(1); });
+
+module.exports = app;

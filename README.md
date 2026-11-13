@@ -3,7 +3,7 @@
 KINOX — Node.js + Express + MongoDB Atlas asosidagi kino katalogi. Loyihada login/register, autentifikatsiya, nom bo‘yicha qidiruv, janr filtri, OCR orqali screenshot ichidagi matnni qidirish va admin panel mavjud.
 
 ## 1. Kerakli dasturlar
-- Node.js 18 yoki undan yangi
+- Node.js 20 yoki undan yangi
 - MongoDB Atlas akkaunti (bepul cluster ham yetadi)
 - VS Code
 
@@ -50,3 +50,30 @@ Rasm yuklanadi va brauzerda Tesseract OCR yordamida rasm ichidagi ko‘rinadigan
 - Ishlab chiqarish serverida HTTPS yoqing va `NODE_ENV=production` qiling.
 - Video URL maydoniga faqat o‘zingiz tarqatishga huquqingiz bo‘lgan yoki rasmiy manbalarni joylang. KINOX film fayllarini noqonuniy joylashtirmaydi.
 - Ushbu demo admin panel foydalanuvchilarni ko‘rish, bloklash/ochildi va o‘chirish, kinolarni qo‘shish/o‘chirish imkonini beradi.
+
+## 8. Internetga joylash (deploy)
+
+Kerakli environment variables (`.env.example` faylida namuna bor):
+
+| Nomi | Majburiy | Izoh |
+|---|---|---|
+| `MONGODB_URI` | ha | MongoDB Atlas connection string. Atlas → Network Access'da `0.0.0.0/0` ruxsat bering (Render/Vercel IP'lari doimiy emas). |
+| `ADMIN_PASSWORD` | ha | Kamida 8 belgi. |
+| `SESSION_SECRET` | ha | Uzun tasodifiy qiymat. |
+| `ADMIN_USERNAME` | yo‘q | Standart: `admin`. |
+| `NODE_ENV` | yo‘q | `production` (Vercel o‘zi qo‘yadi). |
+| `TMDB_API_KEY` | yo‘q | TMDB qidiruvi uchun. |
+| `BLOB_READ_WRITE_TOKEN` | Vercel'da fayl yuklash uchun | Vercel Blob store ulanganda avtomatik qo‘shiladi. |
+
+### Render
+1. https://render.com → **New → Blueprint** → shu GitHub repo'ni tanlang (`render.yaml` avtomatik o‘qiladi).
+2. `MONGODB_URI` va `ADMIN_PASSWORD` qiymatlarini kiriting → **Apply**.
+3. Eslatma: Render bepul tarifida disk vaqtinchalik — `uploads/` ga yuklangan fayllar qayta deploy/uyqudan keyin o‘chadi. Doimiy saqlash uchun `BLOB_READ_WRITE_TOKEN` (Vercel Blob) qo‘shing yoki Render Disk ulang.
+
+### Vercel
+1. https://vercel.com → **Add New → Project** → shu GitHub repo'ni import qiling. Framework: **Other** (`vercel.json` hamma narsani sozlaydi).
+2. **Settings → Environment Variables**'ga yuqoridagi qiymatlarni kiriting.
+3. **Storage → Create → Blob** qilib loyihaga ulang — bu `BLOB_READ_WRITE_TOKEN`ni qo‘shadi va admin paneldan rasm/video yuklash ishlaydi (fayllar brauzerdan to‘g‘ridan-to‘g‘ri Blob'ga yuklanadi).
+4. **Redeploy** qiling.
+
+Vercel cheklovlari: serverless funksiyalar sababli "online" foydalanuvchilar soni va jonli yangilanishlar taxminiy ishlaydi (ulanish har ~50 soniyada qayta ochiladi). Blob ulanmasa, fayl o‘rniga video/poster URL kiriting.
